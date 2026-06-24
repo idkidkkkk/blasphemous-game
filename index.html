@@ -6,30 +6,46 @@
     <title>Blasphemous - Browser Game</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.js"></script>
     <style>
-        body {
+        * {
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            width: 100vw;
+            height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
-            min-height: 100vh;
             background: #1a1a1a;
             font-family: Arial, sans-serif;
+            overflow: hidden;
         }
         #game-container {
             display: flex;
             flex-direction: column;
             align-items: center;
             gap: 20px;
+            width: 100%;
+            height: 100%;
         }
         #game {
             border: 3px solid #444;
             box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
         }
+        canvas {
+            display: block !important;
+            border: 3px solid #444;
+        }
         #ui {
             color: #fff;
             font-size: 18px;
             text-align: center;
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
         }
         .stat {
             margin: 5px 0;
@@ -39,11 +55,11 @@
 <body>
     <div id="game-container">
         <div id="game"></div>
-        <div id="ui">
-            <div class="stat">Health: <span id="player-health">100</span>/100</div>
-            <div class="stat">Enemies Defeated: <span id="enemies-defeated">0</span></div>
-            <div class="stat">Controls: Arrow Keys to Move, SPACE to Jump, Z to Attack</div>
-        </div>
+    </div>
+    <div id="ui">
+        <div class="stat">Health: <span id="player-health">100</span>/100</div>
+        <div class="stat">Enemies Defeated: <span id="enemies-defeated">0</span></div>
+        <div class="stat">Controls: Arrow Keys to Move, SPACE to Jump, Z to Attack</div>
     </div>
 
     <script>
@@ -52,6 +68,7 @@
             width: 1000,
             height: 600,
             parent: 'game',
+            backgroundColor: '#222222',
             physics: {
                 default: 'arcade',
                 arcade: {
@@ -66,7 +83,7 @@
 
         class GameScene extends Phaser.Scene {
             constructor() {
-                super();
+                super('GameScene');
             }
 
             create() {
@@ -74,7 +91,8 @@
                 this.platforms = this.physics.add.staticGroup();
                 
                 // Ground
-                this.platforms.create(500, 590, null).setScale(20, 2).refreshBody();
+                const ground = this.platforms.create(500, 590, null);
+                ground.setScale(20, 2).refreshBody();
                 this.add.rectangle(500, 590, 1000, 20, 0x333333);
                 
                 // Platforms
@@ -85,7 +103,8 @@
                 ];
 
                 platformPositions.forEach(pos => {
-                    this.platforms.create(pos.x, pos.y, null).setScale(pos.width / 32, 1).refreshBody();
+                    const plat = this.platforms.create(pos.x, pos.y, null);
+                    plat.setScale(pos.width / 32, 1).refreshBody();
                     this.add.rectangle(pos.x, pos.y, pos.width, 20, 0x555555);
                 });
 
@@ -100,9 +119,8 @@
                 this.player.health = 100;
                 this.player.isAttacking = false;
                 this.player.attackCooldown = 0;
-                this.player.facing = 1; // 1 = right, -1 = left
+                this.player.facing = 1;
 
-                // Physics
                 this.physics.add.collider(this.player, this.platforms);
 
                 // Create enemies
@@ -111,22 +129,13 @@
                 this.createEnemy(650, 380);
                 this.createEnemy(500, 200);
 
-                // Enemy-player collision
                 this.physics.add.overlap(this.player, this.enemies, this.playerHitEnemy, null, this);
 
                 // Input
                 this.cursors = this.input.keyboard.createCursorKeys();
                 this.input.keyboard.on('keydown-Z', () => this.playerAttack());
 
-                // Sword group for attacks
-                this.swordHits = this.physics.add.group();
-
-                // Enemy defeated counter
                 this.enemiesDefeated = 0;
-
-                // Camera follow
-                this.cameras.main.setBounds(0, 0, 1000, 600);
-                this.cameras.main.startFollow(this.player);
             }
 
             createEnemy(x, y) {
@@ -142,11 +151,9 @@
                 
                 this.add.rectangle(x, y, 25, 40, 0xff0000);
                 
-                // Health bar background
                 enemy.healthBarBg = this.add.rectangle(x, y - 30, 30, 5, 0x333333);
                 enemy.healthBarBg.setDepth(10);
                 
-                // Health bar fill
                 enemy.healthBar = this.add.rectangle(x, y - 30, 30, 5, 0xff0000);
                 enemy.healthBar.setDepth(11);
 
@@ -157,24 +164,20 @@
             playerAttack() {
                 if (this.player.attackCooldown > 0) return;
 
-                this.player.isAttacking = true;
                 this.player.attackCooldown = 30;
 
-                // Create sword hit area
                 const swordX = this.player.x + (this.player.facing * 40);
                 const sword = this.physics.add.sprite(swordX, this.player.y, null);
                 sword.displayWidth = 40;
                 sword.displayHeight = 15;
                 this.add.rectangle(swordX, this.player.y, 40, 15, 0xffff00);
 
-                // Check enemy hits
                 this.physics.overlap(sword, this.enemies, (swordSprite, enemy) => {
-                    if (enemy.health > 0) {
+                    if (enemy.active && enemy.health > 0) {
                         enemy.health -= 20;
                         enemy.knockbackTimer = 10;
                         enemy.setVelocityX(this.player.facing * 300);
 
-                        // Update health bar
                         const healthPercent = Math.max(0, enemy.health) / enemy.maxHealth;
                         enemy.healthBar.setScale(healthPercent, 1);
 
@@ -185,15 +188,13 @@
                     }
                 });
 
-                // Remove sword after attack
                 this.time.delayedCall(100, () => {
                     sword.destroy();
-                    this.player.isAttacking = false;
                 });
             }
 
             playerHitEnemy(player, enemy) {
-                if (enemy.health > 0) {
+                if (enemy.active && enemy.health > 0) {
                     this.player.health -= 5;
                     document.getElementById('player-health').textContent = Math.max(0, this.player.health);
 
@@ -206,7 +207,6 @@
             }
 
             update() {
-                // Player movement
                 if (this.cursors.left.isDown) {
                     this.player.setVelocityX(-200);
                     this.player.facing = -1;
@@ -217,19 +217,16 @@
                     this.player.setVelocityX(0);
                 }
 
-                // Jump
                 if (this.cursors.space.isDown && this.player.body.touching.down) {
                     this.player.setVelocityY(-400);
                 }
 
-                // Update attack cooldown
                 if (this.player.attackCooldown > 0) {
                     this.player.attackCooldown--;
                 }
 
-                // Enemy AI
                 this.enemies.children.entries.forEach(enemy => {
-                    if (enemy.health <= 0) {
+                    if (!enemy.active || enemy.health <= 0) {
                         enemy.destroy();
                         return;
                     }
@@ -245,17 +242,13 @@
                         enemy.setVelocityX(enemy.direction * 80);
                     }
 
-                    // Update health bar position
-                    if (enemy.healthBar) {
+                    if (enemy.healthBar && enemy.active) {
                         enemy.healthBarBg.x = enemy.x;
                         enemy.healthBarBg.y = enemy.y - 30;
                         enemy.healthBar.x = enemy.x;
                         enemy.healthBar.y = enemy.y - 30;
                     }
                 });
-
-                // Remove dead enemies
-                this.enemies.children.entries = this.enemies.children.entries.filter(e => e.active);
             }
         }
     </script>
